@@ -716,36 +716,41 @@
   (:use :common-lisp))
 (in-package read-words)
 
-(defun split-string (string)
-  (loop for i = 0 then (1+ j)
-	as j = (position #\Space string :start i)
-	collect (subseq string i j)
-	while j))
+(defun read-file (filename)
+  (with-open-file (infile filename)
+		  (let ((text (make-array (file-length infile))))
+		    (read-sequence text infile)
+		    (string-upcase (coerce (remove nil text) 'string)))))
 
-(defun clean-string (str)
-  (labels ((iter (seq result)
-		 (cond ((null seq)
-			(coerce (reverse result) 'string))
-		       ((char= (car seq) #\')
-			(iter (cdr seq) (cons (car seq) result)))
-		       ((char= (car seq) #\-)
-			(iter (cdr seq) (cons (car seq) result)))
-		       ((upper-case-p (car seq))
-			(iter (cdr seq) (cons (car seq) result)))
-		       (t
-			(iter (cdr seq) result)))))
-	  (iter (coerce (string-upcase str) 'list) nil)))
-
-(defun string->symbol (string)
-  (coerce (string-upcase string) 'list))
-
-(defun line->symbols (line)
-  (reverse (mapcar #'intern
-		   (mapcar #'clean-string (split-string line)))))
+(defun list->symbol (ls)
+  (let ((x (coerce ls 'string)))
+    (cond ((> (count #\. x) 1)
+	   (intern x))
+	  (t
+	   (let ((y (remove #\. x)))
+	     (if (zerop (length y))
+		 nil
+	       (intern y)))))))
+  
+(defun parse-text (text)
+  (labels ((aux (seq tmp res)
+		(cond ((null seq)
+		       (reverse
+			(remove nil
+				(cons
+				 (list->symbol (reverse tmp)) res))))
+		      ((alpha-char-p (car seq))
+		       (aux (cdr seq) (cons (car seq) tmp) res))
+		      ((char= (car seq) #\')
+		       (aux (cdr seq) (cons (car seq) tmp) res))
+		      ((char= (car seq) #\.)
+		       (aux (cdr seq) (cons (car seq) tmp) res))
+		      (t 
+		       (aux
+			(cdr seq)
+			nil
+			(cons (list->symbol (reverse tmp)) res))))))
+	  (aux (coerce text 'list) nil nil)))
 
 (defun read-words (filename)
-  (with-open-file (infile filename)
-		  (do ((line (read-line infile nil 'eof)
-			     (read-line infile nil 'eof))
-		       (seq nil (append (line->symbols line) seq)))
-		      ((eq line 'eof) (remove (intern "") (reverse seq))))))
+  (parse-text (read-file filename)))
